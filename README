@@ -3,14 +3,17 @@
  Ruby library for games networking
 -------------------------------------------------
 	     -= Work in Progress =-
+	     No docs or comments right now :|
 =================================================
 
  Planned:
  - ENet::Connection (client)
  - ENet::Server     (server)
+ - Others
  
  More or less finished:
  - ENet::Connection
+ - ENet::Server
  
 -------------------------------------------------
  Available binaries:
