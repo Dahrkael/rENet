@@ -15,42 +15,40 @@
  * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
 */
-
-#ifndef RUBY_ENET_CONNECTION
-#define RUBY_ENET_CONNECTION
+/* Peer_Index = (int)(event.peer - server->peers); */
+ 
+#ifndef RUBY_ENET_SERVER
+#define RUBY_ENET_SERVER
 
 #include "renet.h"
 
 typedef struct {
    ENetHost*    host;
-   ENetPeer*    peer;
    ENetEvent*   event;
    ENetAddress* address;
    int          channels;
-   int  		online;
-} Connection;
+   char* 	    conn_ip;
+} Server;
 
-void init_renet_connection();
+void init_renet_server();
 
-VALUE renet_connection_allocate(VALUE self);
-void renet_connection_deallocate(void* connection);
+VALUE renet_server_allocate(VALUE self);
+void renet_server_deallocate(void* server);
 
-VALUE renet_connection_initialize(VALUE self, VALUE host, VALUE port, VALUE channels, VALUE download, VALUE upload);
-VALUE renet_connection_connect(VALUE self, VALUE timeout);
-VALUE renet_connection_disconnect(VALUE self, VALUE timeout);
-VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE channel);
-VALUE renet_connection_send_queued_packets(VALUE self);
-VALUE renet_connection_update(VALUE self, VALUE timeout);
+VALUE renet_server_initialize(VALUE self, VALUE port, VALUE n_peers, VALUE channels, VALUE download, VALUE upload);
+VALUE renet_server_disconnect_client(VALUE self, VALUE peer_id);
+VALUE renet_server_send_packet(VALUE self, VALUE peer_id, VALUE data, VALUE flag, VALUE channel);
+VALUE renet_server_broadcast_packet(VALUE self, VALUE data, VALUE flag, VALUE channel);
+VALUE renet_server_send_queued_packets(VALUE self);
+VALUE renet_server_update(VALUE self, VALUE timeout);
 
-VALUE renet_connection_on_connection(VALUE self, VALUE method);
-void renet_connection_execute_on_connection();
+VALUE renet_server_on_connection(VALUE self, VALUE method);
+void renet_server_execute_on_connection(VALUE peer_id, VALUE ip);
 
-VALUE renet_connection_on_packet_receive(VALUE self, VALUE method);
-/*VALUE renet_connection_on_packet_receive(int argc, VALUE *argv, VALUE self);*/
-void renet_connection_execute_on_packet_receive(enet_uint8* data, enet_uint8 channelID);
+VALUE renet_server_on_packet_receive(VALUE self, VALUE method);
+void renet_server_execute_on_packet_receive(VALUE peer_id, enet_uint8* data, enet_uint8 channelID);
 
-VALUE renet_connection_on_disconnection(VALUE self, VALUE method);
-void renet_connection_execute_on_disconnection();
+VALUE renet_server_on_disconnection(VALUE self, VALUE method);
+void renet_server_execute_on_disconnection(VALUE peer_id);
 
-VALUE renet_connection_online(VALUE self);
 #endif

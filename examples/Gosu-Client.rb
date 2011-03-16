@@ -12,11 +12,18 @@ class GameWindow < Gosu::Window
 	end
 
 	def update
-		@socket.update(100)
+		@socket.update(0)
+		self.caption = "Gosu & ENet Test  -  [FPS: #{Gosu::fps.to_s}]"
 	end
 
 	def draw
-		@font.draw("Connected: #{@socket.online}", 10, 10, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Connected: #{@socket.online?}", 10, 10, 0, 1.0, 1.0, 0xffffff00)
+		
+		@font.draw("Packets Sent: #{@socket.total_sent_packets}", 400, 10, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Packets Recv: #{@socket.total_received_packets}", 400, 30, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Bytes Sent: #{@socket.total_sent_data}", 400, 50, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Bytes Recv: #{@socket.total_received_data}", 400, 70, 0, 1.0, 1.0, 0xffffff00)
+		
 		if @packets.size >= 1
 			for i in 1...@packets.size
 				@font.draw("[PACKET] From channel #{@packets[i-1][1]}, containing \"#{@packets[i-1][0]}\"", 10, 30*i, 0, 1.0, 1.0, 0xffffffff)
@@ -34,7 +41,7 @@ class GameWindow < Gosu::Window
 	end
 
 	def on_packet(data, channel)
-		@packets.slice!(0) if @packets.size >= 10
+		@packets.slice!(0) if @packets.size >= 15
 		@packets << [data, channel]
 	end
 end

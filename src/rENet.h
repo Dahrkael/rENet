@@ -22,13 +22,13 @@
 #include <ruby.h>
 #include <enet.h>
 
-#include "rENet_Connection.h"
-//#include "rENet_address.h"
+#include "renet_connection.h"
+#include "renet_server.h"
 
 extern VALUE mENet;
 
 void Init_renet();
-void Init_Constants();
+/*void Init_Constants();*/
 VALUE renet_main_initialize(VALUE self);
 VALUE renet_main_deinitialize(VALUE self);
 
