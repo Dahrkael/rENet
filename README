@@ -18,7 +18,7 @@
  
 -------------------------------------------------
  Available binaries:
- - Ruby 1.9 Windows 32bits (Mingw - Debug)
+ - Ruby 1.9 Windows 32bits (Mingw)
  
 =================================================
  Under MIT license
@@ -33,7 +33,11 @@ module ENet
 	|- RENET_VERSION (string)
 	|
 	|- Connection (class)
-	|	|- variables
+	|	|- attr_reader
+	|	|	|- online?
+	|	|	|- connected?
+	|	|
+	|	|- attr_accessor
 	|	|	|- total_sent_data
 	|	|	|- total_received_data
 	|	|	|- total_sent_packets
@@ -49,11 +53,13 @@ module ENet
 	|		|- on_connection (method to call)
 	|		|- on_packet_receive (method to call)
 	|		|- on_disconnection (method to call)
-	|		|- online? (nothing)
-	|		|- connected? (nothing)
 	|
 	|- Server (class)
-		|- variables
+		|- attr_reader
+		|	|- max_clients
+		|	|- clients_count
+		|
+		|- attr_accessor
 		|	|- total_sent_data
 		|	|- total_received_data
 		|	|- total_sent_packets
@@ -69,5 +75,3 @@ module ENet
 			|- on_connection (method to call)
 			|- on_packet_receive (method to call)
 			|- on_disconnection (method to call)
-			|- max_clients (nothing)
-			|- clients_count (nothing)
