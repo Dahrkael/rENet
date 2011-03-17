@@ -18,15 +18,16 @@ class GameWindow < Gosu::Window
 
 	def draw
 		@font.draw("Connected: #{@socket.online?}", 10, 10, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Press C to connect   Press P to send a packet", 10, 440, 0, 1.0, 1.0, 0xffffff00)
 		
-		@font.draw("Packets Sent: #{@socket.total_sent_packets}", 400, 10, 0, 1.0, 1.0, 0xffffff00)
-		@font.draw("Packets Recv: #{@socket.total_received_packets}", 400, 30, 0, 1.0, 1.0, 0xffffff00)
-		@font.draw("Bytes Sent: #{@socket.total_sent_data}", 400, 50, 0, 1.0, 1.0, 0xffffff00)
-		@font.draw("Bytes Recv: #{@socket.total_received_data}", 400, 70, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Packets Sent: #{@socket.total_sent_packets}", 450, 380, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Packets Recv: #{@socket.total_received_packets}", 450, 400, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Bytes Sent: #{@socket.total_sent_data}", 450, 420, 0, 1.0, 1.0, 0xffffff00)
+		@font.draw("Bytes Recv: #{@socket.total_received_data}", 450, 440, 0, 1.0, 1.0, 0xffffff00)
 		
-		if @packets.size >= 1
-			for i in 1...@packets.size
-				@font.draw("[PACKET] From channel #{@packets[i-1][1]}, containing \"#{@packets[i-1][0]}\"", 10, 30*i, 0, 1.0, 1.0, 0xffffffff)
+		if !@packets.empty?
+			@packets.each_index do |i|
+				@font.draw("[PACKET] From channel #{@packets[i][1]}, containing \"#{@packets[i][0]}\"", 10, 30*(i+1), 0, 1.0, 1.0, @packets[i][2])
 			end
 		end
 	end
@@ -41,8 +42,8 @@ class GameWindow < Gosu::Window
 	end
 
 	def on_packet(data, channel)
-		@packets.slice!(0) if @packets.size >= 15
-		@packets << [data, channel]
+		@packets.slice!(0) if @packets.size >= 11
+		@packets << [data, channel, Gosu::Color.argb(255, rand(100)+155, rand(100)+155, rand(100)+155)]
 	end
 end
 

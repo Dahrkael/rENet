@@ -27,6 +27,7 @@ typedef struct {
    ENetEvent*   event;
    ENetAddress* address;
    int          channels;
+   int			n_clients;
    char* 	    conn_ip;
 } Server;
 
@@ -50,5 +51,8 @@ void renet_server_execute_on_packet_receive(VALUE peer_id, enet_uint8* data, ene
 
 VALUE renet_server_on_disconnection(VALUE self, VALUE method);
 void renet_server_execute_on_disconnection(VALUE peer_id);
+
+VALUE renet_server_max_clients(VALUE self);
+VALUE renet_server_clients_count(VALUE self);
 
 #endif

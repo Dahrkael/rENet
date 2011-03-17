@@ -134,7 +134,7 @@ VALUE renet_connection_disconnect(VALUE self, VALUE timeout)
 				return Qtrue;
         }
     }
-    enet_peer_disconnect_now(connection->peer);
+    enet_peer_disconnect_now(connection->peer, 0);
 	connection->online = 0;
 	return Qfalse;
 }

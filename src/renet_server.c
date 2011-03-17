@@ -28,12 +28,16 @@ void init_renet_server()
   rb_define_method(cENetServer, "initialize", renet_server_initialize, 5);
   rb_define_method(cENetServer, "disconnect_client", renet_server_disconnect_client, 1);
   rb_define_method(cENetServer, "send_packet", renet_server_send_packet, 4);
+  rb_define_method(cENetServer, "broadcast_packet", renet_server_broadcast_packet, 3);
   rb_define_method(cENetServer, "send_queued_packets", renet_server_send_queued_packets, 0);
   rb_define_method(cENetServer, "update", renet_server_update, 1);
   
   rb_define_method(cENetServer, "on_connection", renet_server_on_connection, 1);
   rb_define_method(cENetServer, "on_packet_receive", renet_server_on_packet_receive, 1);
   rb_define_method(cENetServer, "on_disconnection", renet_server_on_disconnection, 1);
+  
+  rb_define_method(cENetServer, "max_clients", renet_server_max_clients, 0);
+  rb_define_method(cENetServer, "clients_count", renet_server_clients_count, 0);
 }
 
 VALUE renet_server_allocate(VALUE self)
@@ -151,6 +155,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
 			break;
 			
 			case ENET_EVENT_TYPE_CONNECT:
+				server->n_clients += 1;
 				enet_address_get_host_ip(&(server->event->peer->address), server->conn_ip, 20);
 				peer_id = (int)(server->event->peer - server->host->peers);
 				renet_server_execute_on_connection(INT2NUM(peer_id), rb_str_new2(server->conn_ip));
@@ -163,6 +168,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
             break;
            
 			case ENET_EVENT_TYPE_DISCONNECT:
+				server->n_clients -= 1;
 				peer_id = (int)(server->event->peer - server->host->peers);
 				renet_server_execute_on_disconnection(INT2NUM(peer_id));
         }
@@ -240,3 +246,18 @@ void renet_server_execute_on_disconnection(VALUE peer_id)
 		rb_funcall(method, rb_intern("call"), 1, peer_id);
 	}
 }
+
+VALUE renet_server_max_clients(VALUE self)
+{
+	Server* server;
+	Data_Get_Struct(self, Server, server);
+	return UINT2NUM(server->host->peerCount);
+}
+
+VALUE renet_server_clients_count(VALUE self)
+{
+	Server* server;
+	Data_Get_Struct(self, Server, server);
+	return UINT2NUM(server->n_clients);
+}
+
