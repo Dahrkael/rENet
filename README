@@ -4,6 +4,7 @@
 -------------------------------------------------
 	     -= Work in Progress =-
 	     No docs or comments right now :|
+	     Just this readme ;x
 =================================================
 
  Planned:
@@ -24,3 +25,49 @@
 ------------------------------------------------
  Uses ENet as backend < http://enet.bespin.org/ >
 =================================================
+
+Library overview
+-------------------------------------------------
+module ENet
+	|- ENET_VERSION (string)
+	|- RENET_VERSION (string)
+	|
+	|- Connection (class)
+	|	|- variables
+	|	|	|- total_sent_data
+	|	|	|- total_received_data
+	|	|	|- total_sent_packets
+	|	|	|- total_received_packets
+	|	|
+	|	|- methods
+	|		|- initialize (remote host, remote port, channels to allocate, download bw, upload bw)
+	|		|- connect (timeout in ms)
+	|		|- disconnect (timeout in ms)
+	|		|- send_packet (data to send, reliable or not, channel id)
+	|		|- send_queued_packets (nothing)
+	|		|- update (timeout in ms)
+	|		|- on_connection (method to call)
+	|		|- on_packet_receive (method to call)
+	|		|- on_disconnection (method to call)
+	|		|- online? (nothing)
+	|		|- connected? (nothing)
+	|
+	|- Server (class)
+		|- variables
+		|	|- total_sent_data
+		|	|- total_received_data
+		|	|- total_sent_packets
+		|	|- total_received_packets
+		|
+		|- methods
+			|- initialize (local port, nº of allowed clients, channels to allocate, download bw, upload bw)
+			|- disconnect_client (client id)
+			|- send_packet (client id, data to send, reliable or not, channel id)
+			|- broadcast_packet (data to send, reliable or not, channel id)
+			|- send_queued_packets (nothing)
+			|- update (timeout in ms)
+			|- on_connection (method to call)
+			|- on_packet_receive (method to call)
+			|- on_disconnection (method to call)
+			|- max_clients (nothing)
+			|- clients_count (nothing)

@@ -92,7 +92,10 @@ VALUE renet_connection_connect(VALUE self, VALUE timeout)
 {
 	Connection* connection;
 	Data_Get_Struct(self, Connection, connection);
-	
+	if (connection->online == 1)
+	{
+		return Qfalse;
+	}
 	connection->peer = enet_host_connect(connection->host, connection->address, connection->channels, 0);    
     
     if (connection->peer == NULL)
