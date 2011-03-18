@@ -30,7 +30,9 @@ void init_renet_server()
   rb_define_method(cENetServer, "send_packet", renet_server_send_packet, 4);
   rb_define_method(cENetServer, "broadcast_packet", renet_server_broadcast_packet, 3);
   rb_define_method(cENetServer, "send_queued_packets", renet_server_send_queued_packets, 0);
+  rb_define_method(cENetServer, "flush", renet_server_send_queued_packets, 0);
   rb_define_method(cENetServer, "update", renet_server_update, 1);
+  rb_define_method(cENetServer, "use_compression", renet_server_use_compression, 1);
   
   rb_define_method(cENetServer, "on_connection", renet_server_on_connection, 1);
   rb_define_method(cENetServer, "on_packet_receive", renet_server_on_packet_receive, 1);
@@ -196,6 +198,21 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
 	rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp)); 
 	
 	return Qtrue;
+}
+
+VALUE renet_server_use_compression(VALUE self, VALUE flag)
+{
+	Server* server;
+	Data_Get_Struct(self, Server, server);
+	if (flag == Qtrue)
+	{
+		enet_host_compress_with_range_coder(server->host);
+	}
+	else
+	{
+		enet_host_compress(server->host, NULL);
+	}
+	return Qnil;
 }
 
 VALUE renet_server_on_connection(VALUE self, VALUE method)

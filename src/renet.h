@@ -20,7 +20,7 @@
 #define RUBY_ENET
 
 #include <ruby.h>
-#include <enet.h>
+#include <enet/enet.h>
 
 #include "renet_connection.h"
 #include "renet_server.h"

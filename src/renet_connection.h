@@ -41,6 +41,7 @@ VALUE renet_connection_disconnect(VALUE self, VALUE timeout);
 VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE channel);
 VALUE renet_connection_send_queued_packets(VALUE self);
 VALUE renet_connection_update(VALUE self, VALUE timeout);
+VALUE renet_connection_use_compression(VALUE self, VALUE flag);
 
 VALUE renet_connection_on_connection(VALUE self, VALUE method);
 void renet_connection_execute_on_connection();
@@ -53,4 +54,5 @@ VALUE renet_connection_on_disconnection(VALUE self, VALUE method);
 void renet_connection_execute_on_disconnection();
 
 VALUE renet_connection_online(VALUE self);
+
 #endif

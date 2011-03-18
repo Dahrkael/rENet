@@ -15,7 +15,6 @@
  * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
  * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
 */
-/* Peer_Index = (int)(event.peer - server->peers); */
  
 #ifndef RUBY_ENET_SERVER
 #define RUBY_ENET_SERVER
@@ -42,6 +41,7 @@ VALUE renet_server_send_packet(VALUE self, VALUE peer_id, VALUE data, VALUE flag
 VALUE renet_server_broadcast_packet(VALUE self, VALUE data, VALUE flag, VALUE channel);
 VALUE renet_server_send_queued_packets(VALUE self);
 VALUE renet_server_update(VALUE self, VALUE timeout);
+VALUE renet_server_use_compression(VALUE self, VALUE flag);
 
 VALUE renet_server_on_connection(VALUE self, VALUE method);
 void renet_server_execute_on_connection(VALUE peer_id, VALUE ip);
