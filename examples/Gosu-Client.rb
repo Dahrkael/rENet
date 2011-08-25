@@ -1,6 +1,7 @@
 # require gosu and renet libs!
+require 'rubygems'
 require 'gosu'
-require './../bin/renet.so'
+require 'renet'
 
 # define a new window class
 class GameWindow < Gosu::Window

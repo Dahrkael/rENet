@@ -30,7 +30,7 @@ void Init_renet()
   init_renet_connection();
   init_renet_server();
   rb_define_const(mENet, "ENET_VERSION", rb_str_new2("1.3.0"));
-  rb_define_const(mENet, "RENET_VERSION", rb_str_new2("0.1"));
+  rb_define_const(mENet, "RENET_VERSION", rb_str_new2("0.1.13"));
 }
 
 VALUE renet_main_initialize(VALUE self)

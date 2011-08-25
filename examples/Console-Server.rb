@@ -1,5 +1,6 @@
 # require the lib!
-require './../bin/renet.so'
+require 'rubygems'
+require 'renet'
 
 # define a custom handler for new client connections, it will be automatically called
 def connections_handler(id, ip)
