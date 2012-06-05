@@ -165,7 +165,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
 
 			case ENET_EVENT_TYPE_RECEIVE:
 				peer_id = (int)(server->event->peer - server->host->peers);
-				renet_server_execute_on_packet_receive(INT2NUM(peer_id), server->event->packet->data, server->event->channelID);
+				renet_server_execute_on_packet_receive(INT2NUM(peer_id), server->event->packet->dataLength, server->event->packet->data, server->event->channelID);
 				enet_packet_destroy(server->event->packet);
             break;
            
@@ -239,12 +239,12 @@ VALUE renet_server_on_packet_receive(VALUE self, VALUE method)
 	return Qnil;
 }
 
-void renet_server_execute_on_packet_receive(VALUE peer_id, enet_uint8* data, enet_uint8 channelID)
+void renet_server_execute_on_packet_receive(VALUE peer_id, size_t data_length, enet_uint8* data, enet_uint8 channelID)
 {
 	VALUE method = rb_iv_get(cENetServer, "@on_packet_receive");
 	if (method != Qnil)
 	{
-		rb_funcall(method, rb_intern("call"), 3, peer_id, rb_str_new2(data), UINT2NUM(channelID));
+		rb_funcall(method, rb_intern("call"), 3, peer_id, rb_str_new(data, data_length), UINT2NUM(channelID));
 	}
 }
 
