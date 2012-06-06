@@ -48,7 +48,7 @@ void renet_connection_execute_on_connection();
 
 VALUE renet_connection_on_packet_receive(VALUE self, VALUE method);
 /*VALUE renet_connection_on_packet_receive(int argc, VALUE *argv, VALUE self);*/
-void renet_connection_execute_on_packet_receive(enet_uint8* data, enet_uint8 channelID);
+void renet_connection_execute_on_packet_receive(size_t data_length, enet_uint8* data, enet_uint8 channelID);
 
 VALUE renet_connection_on_disconnection(VALUE self, VALUE method);
 void renet_connection_execute_on_disconnection();

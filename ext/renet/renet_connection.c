@@ -192,7 +192,7 @@ VALUE renet_connection_update(VALUE self, VALUE timeout)
             break;
 
 			case ENET_EVENT_TYPE_RECEIVE:
-					renet_connection_execute_on_packet_receive(connection->event->packet->data, connection->event->channelID);
+					renet_connection_execute_on_packet_receive(connection->event->packet->dataLength, connection->event->packet->data, connection->event->channelID);
 					enet_packet_destroy(connection->event->packet);
             break;
            
@@ -282,12 +282,12 @@ VALUE renet_connection_on_packet_receive(VALUE self, VALUE method)
 	return Qnil;
 }*/
 
-void renet_connection_execute_on_packet_receive(enet_uint8* data, enet_uint8 channelID)
+void renet_connection_execute_on_packet_receive(size_t data_length, enet_uint8* data, enet_uint8 channelID)
 {
 	VALUE method = rb_iv_get(cENetConnection, "@on_packet_receive");
 	if (method != Qnil)
 	{
-		rb_funcall(method, rb_intern("call"), 2, rb_str_new2(data), UINT2NUM(channelID));
+		rb_funcall(method, rb_intern("call"), 2, rb_str_new(data, data_length), UINT2NUM(channelID));
 	}
 }
 
