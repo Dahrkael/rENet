@@ -5,7 +5,7 @@ project_name = "renet"
 
 def apply_gemspec_defaults(s)
 	s.name = "renet"
-	s.version = "0.1.14"
+	s.version = "0.1.15"
 	s.date = Time.now.strftime '%Y-%m-%d'
 	s.author = "Dahrkael"
 	s.email = "dark.wolf.warrior@gmail.com"
