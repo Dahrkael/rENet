@@ -122,32 +122,31 @@ VALUE renet_connection_disconnect(VALUE self, VALUE timeout)
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
 
-  if (connection->online == 1)
-  {
-    
-    enet_peer_disconnect(connection->peer, 0);
-
-    while (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
-    {
-      switch (connection->event->type)
-      {
-      case ENET_EVENT_TYPE_RECEIVE:
-        enet_packet_destroy (connection->event->packet);
-        break;
-
-      case ENET_EVENT_TYPE_DISCONNECT:
-        connection->online = 0;
-        return Qtrue;
-      }
-    }
-    enet_peer_disconnect_now(connection->peer, 0);
-    connection->online = 0;
-    return Qfalse;
-  }
-  else
+  if (connection->online == 0)
   {
     return Qtrue;
   }
+    
+  connection->online = 0;
+  enet_peer_disconnect(connection->peer, 0);
+
+  while (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
+  {
+    switch (connection->event->type)
+    {
+    case ENET_EVENT_TYPE_NONE:
+      break;
+    case ENET_EVENT_TYPE_CONNECT:
+      break;
+    case ENET_EVENT_TYPE_RECEIVE:
+      enet_packet_destroy (connection->event->packet);
+      break;
+    case ENET_EVENT_TYPE_DISCONNECT:
+      return Qtrue;
+    }
+  }
+  enet_peer_disconnect_now(connection->peer, 0);
+  return Qfalse;
 }
 
 VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE channel)
@@ -157,15 +156,18 @@ VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE cha
   Check_Type(data, T_STRING);
   char* cdata = StringValuePtr(data);
   ENetPacket* packet;
-  if (flag == Qtrue)
+  if (connection->online != 0)
   {
-    packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, ENET_PACKET_FLAG_RELIABLE);
+    if (flag == Qtrue)
+    {
+      packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, ENET_PACKET_FLAG_RELIABLE);
+    }
+    else
+    {
+      packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
+    }
+    enet_peer_send(connection->peer, NUM2UINT(channel), packet);
   }
-  else
-  {
-    packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
-  }
-  enet_peer_send(connection->peer, NUM2UINT(channel), packet);
   return Qnil;
 }
 
@@ -173,7 +175,10 @@ VALUE renet_connection_send_queued_packets(VALUE self)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
-  enet_host_flush(connection->host);
+  if (connection->online != 0)
+  {
+    enet_host_flush(connection->host);
+  }
   return Qnil;
 }
 
@@ -185,23 +190,26 @@ VALUE renet_connection_update(VALUE self, VALUE timeout)
   {
     return Qfalse;
   }
-  while (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
+  if (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
   {
-    switch (connection->event->type)
+    do
     {
-    case ENET_EVENT_TYPE_NONE:
-      break;
-    case ENET_EVENT_TYPE_CONNECT:
-      break;
-    case ENET_EVENT_TYPE_RECEIVE:
-      renet_connection_execute_on_packet_receive(self, connection->event->packet->dataLength, connection->event->packet->data, connection->event->channelID);
-      enet_packet_destroy(connection->event->packet);
-      break;
-    case ENET_EVENT_TYPE_DISCONNECT:
-      connection->online = 0;
-      renet_connection_execute_on_disconnection(self);
-      break;
+      switch (connection->event->type)
+      {
+      case ENET_EVENT_TYPE_NONE:
+        break;
+      case ENET_EVENT_TYPE_CONNECT:
+        break;
+      case ENET_EVENT_TYPE_RECEIVE:     
+        renet_connection_execute_on_packet_receive(self, connection->event->packet, connection->event->channelID);
+        break;
+      case ENET_EVENT_TYPE_DISCONNECT:
+        connection->online = 0;
+        renet_connection_execute_on_disconnection(self);
+        break;
+      }
     }
+    while ((connection->online != 0) && (enet_host_service(connection->host, connection->event, 0) > 0));
   }
   
   int tmp;
@@ -284,12 +292,17 @@ VALUE renet_connection_on_packet_receive(VALUE self, VALUE method)
   return Qnil;
 }*/
 
-void renet_connection_execute_on_packet_receive(VALUE self, size_t data_length, enet_uint8* data, enet_uint8 channelID)
+void renet_connection_execute_on_packet_receive(VALUE self, ENetPacket * const packet, enet_uint8 channelID)
 {
-  VALUE method = rb_iv_get(self, "@on_packet_receive");
+  VALUE method  = rb_iv_get(self, "@on_packet_receive");
+  VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
+  VALUE channel = UINT2NUM(channelID);
+  /* marshal data and then destroy packet */
+  enet_packet_destroy(packet); 
+
   if (method != Qnil)
   {
-    rb_funcall(method, rb_intern("call"), 2, rb_str_new(data, data_length), UINT2NUM(channelID));
+    rb_funcall(method, rb_intern("call"), 2, data, channel);
   }
 }
 

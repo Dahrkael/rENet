@@ -26,8 +26,8 @@ typedef struct {
    ENetEvent*   event;
    ENetAddress* address;
    int          channels;
-   int			n_clients;
-   char* 	    conn_ip;
+   int          n_clients;
+   char*        conn_ip;
 } Server;
 
 void init_renet_server();
