@@ -410,15 +410,16 @@ void renet_connection_execute_on_packet_receive(VALUE self, ENetPacket * const p
 {
   VALUE method  = rb_iv_get(self, "@on_packet_receive");
   VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
-  VALUE channel = UINT2NUM(channelID);
-  /* marshal data and then destroy packet */
+  /* marshal data and then destroy packet 
+     if we don't do this now the packet might become invalid before we get
+     back and we'd get a segfault when we attempt to destroy */
   enet_packet_destroy(packet); 
 
   if (method != Qnil)
   {
     VALUE lock = rb_iv_get(self, "@lock");
     rb_mutex_unlock(lock);
-    rb_funcall(method, rb_intern("call"), 2, data, channel);
+    rb_funcall(method, rb_intern("call"), 2, data, UINT2NUM(channelID));
     rb_mutex_lock(lock);
   }
 }

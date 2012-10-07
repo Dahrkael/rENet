@@ -164,8 +164,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
 
             case ENET_EVENT_TYPE_RECEIVE:
                 peer_id = (int)(server->event->peer - server->host->peers);
-                renet_server_execute_on_packet_receive(self, INT2NUM(peer_id), server->event->packet->dataLength, server->event->packet->data, server->event->channelID);
-                enet_packet_destroy(server->event->packet);
+                renet_server_execute_on_packet_receive(self, INT2NUM(peer_id), server->event->packet, server->event->channelID);
             break;
            
             case ENET_EVENT_TYPE_DISCONNECT:
@@ -238,12 +237,18 @@ VALUE renet_server_on_packet_receive(VALUE self, VALUE method)
     return Qnil;
 }
 
-void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, size_t data_length, enet_uint8* data, enet_uint8 channelID)
+void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, ENetPacket * const packet, enet_uint8 channelID)
 {
     VALUE method = rb_iv_get(self, "@on_packet_receive");
+    VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
+    /* marshal data and then destroy packet 
+       if we don't do this now the packet might become invalid before we get
+       back and we'd get a segfault when we attempt to destroy */
+    enet_packet_destroy(packet);
+
     if (method != Qnil)
     {
-        rb_funcall(method, rb_intern("call"), 3, peer_id, rb_str_new((char const *)data, data_length), UINT2NUM(channelID));
+        rb_funcall(method, rb_intern("call"), 3, peer_id, data, UINT2NUM(channelID));
     }
 }
 

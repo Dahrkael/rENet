@@ -47,7 +47,7 @@ VALUE renet_server_on_connection(VALUE self, VALUE method);
 void renet_server_execute_on_connection(VALUE self, VALUE peer_id, VALUE ip);
 
 VALUE renet_server_on_packet_receive(VALUE self, VALUE method);
-void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, size_t data_length, enet_uint8* data, enet_uint8 channelID);
+void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, ENetPacket * const packet, enet_uint8 channelID);
 
 VALUE renet_server_on_disconnection(VALUE self, VALUE method);
 void renet_server_execute_on_disconnection(VALUE self, VALUE peer_id);
