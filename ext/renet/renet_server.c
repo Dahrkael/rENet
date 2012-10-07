@@ -69,6 +69,10 @@ VALUE renet_server_initialize(VALUE self, VALUE port, VALUE n_peers, VALUE chann
     rb_funcall(mENet, rb_intern("initialize"), 0);
     Server* server;
     Data_Get_Struct(self, Server, server);
+
+    VALUE lock = rb_mutex_new();
+    rb_iv_set(self, "@lock", lock); 
+    rb_mutex_lock(lock);
     
     server->address->host = ENET_HOST_ANY;
     server->address->port = NUM2UINT(port);
@@ -81,7 +85,9 @@ VALUE renet_server_initialize(VALUE self, VALUE port, VALUE n_peers, VALUE chann
     rb_iv_set(self, "@total_sent_data", INT2FIX(0)); 
     rb_iv_set(self, "@total_received_data", INT2FIX(0));
     rb_iv_set(self, "@total_sent_packets", INT2FIX(0));
-    rb_iv_set(self, "@total_received_packets", INT2FIX(0)); 
+    rb_iv_set(self, "@total_received_packets", INT2FIX(0));
+
+    rb_mutex_unlock(lock);
     
     return self;
 }
@@ -90,7 +96,10 @@ VALUE renet_server_disconnect_client(VALUE self, VALUE peer_id)
 {
     Server* server;
     Data_Get_Struct(self, Server, server);
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_lock(lock);
     enet_peer_disconnect_now(&(server->host->peers[NUM2UINT(peer_id)]), 0);
+    rb_mutex_unlock(lock);
     renet_server_execute_on_disconnection(self, peer_id);
     return Qtrue;
 }
@@ -99,6 +108,8 @@ VALUE renet_server_send_packet(VALUE self, VALUE peer_id, VALUE data, VALUE flag
 {
     Server* server;
     Data_Get_Struct(self, Server, server);
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_lock(lock);
     Check_Type(data, T_STRING);
     char* cdata = StringValuePtr(data);
     ENetPacket* packet;
@@ -111,13 +122,16 @@ VALUE renet_server_send_packet(VALUE self, VALUE peer_id, VALUE data, VALUE flag
         packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
     }
     enet_peer_send(&(server->host->peers[NUM2UINT(peer_id)]), NUM2UINT(channel), packet);
-   return Qnil;
+    rb_mutex_unlock(lock);
+    return Qnil;
 }
 
 VALUE renet_server_broadcast_packet(VALUE self, VALUE data, VALUE flag, VALUE channel)
 {
     Server* server;
     Data_Get_Struct(self, Server, server);
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_lock(lock);
     Check_Type(data, T_STRING);
     char* cdata = StringValuePtr(data);
     ENetPacket* packet;
@@ -130,78 +144,124 @@ VALUE renet_server_broadcast_packet(VALUE self, VALUE data, VALUE flag, VALUE ch
         packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
     }
     enet_host_broadcast(server->host, NUM2UINT(channel), packet);
-   return Qnil;
+    rb_mutex_unlock(lock);
+    return Qnil;
 }
 
 VALUE renet_server_send_queued_packets(VALUE self)
 {
     Server* server;
     Data_Get_Struct(self, Server, server);
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_lock(lock);
     enet_host_flush(server->host);
+    rb_mutex_unlock(lock);
     return Qnil;
+}
+
+/* These let us release the global interpreter lock if while we're waiting for
+   enet_host_service to finish:
+
+   CallbackData
+   do_service
+   service
+*/
+typedef struct
+{
+  Server * server;
+  enet_uint32 timeout;
+} CallbackData;
+
+static VALUE do_service(void *data)
+{
+  CallbackData* temp_data = data;
+  return enet_host_service(temp_data->server->host, temp_data->server->event, temp_data->timeout);
+}
+
+static VALUE service(VALUE self, Server* server, enet_uint32 timeout)
+{
+  CallbackData data = {server, timeout};
+  if (timeout > 0)
+  {
+    return rb_thread_blocking_region(do_service, &data, RUBY_UBF_IO, 0);
+  }
+  else
+  {
+    return do_service(&data);
+  }
 }
 
 VALUE renet_server_update(VALUE self, VALUE timeout)
 {
-    Server* server;
-    Data_Get_Struct(self, Server, server);
-    int peer_id;
-    
-    while (enet_host_service(server->host, server->event, NUM2UINT(timeout)) > 0)
+  Server* server;
+  Data_Get_Struct(self, Server, server);
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+  int peer_id;
+  
+  /* wait up to timeout milliseconds for a packet */
+  if (service(self, server, NUM2UINT(timeout)) > 0)
+  {
+    do
     {
-        switch (server->event->type)
-        {
-            case ENET_EVENT_TYPE_NONE:
-            
-            break;
-            
-            case ENET_EVENT_TYPE_CONNECT:
-                server->n_clients += 1;
-                enet_address_get_host_ip(&(server->event->peer->address), server->conn_ip, 20);
-                peer_id = (int)(server->event->peer - server->host->peers);
-                renet_server_execute_on_connection(self, INT2NUM(peer_id), rb_str_new2(server->conn_ip));
-            break;
+      switch (server->event->type)
+      {
+        case ENET_EVENT_TYPE_NONE:
+          break;
+        
+        case ENET_EVENT_TYPE_CONNECT:
+          server->n_clients += 1;
+          enet_address_get_host_ip(&(server->event->peer->address), server->conn_ip, 20);
+          peer_id = (int)(server->event->peer - server->host->peers);
+          renet_server_execute_on_connection(self, INT2NUM(peer_id), rb_str_new2(server->conn_ip));
+          break;
 
-            case ENET_EVENT_TYPE_RECEIVE:
-                peer_id = (int)(server->event->peer - server->host->peers);
-                renet_server_execute_on_packet_receive(self, INT2NUM(peer_id), server->event->packet, server->event->channelID);
-            break;
-           
-            case ENET_EVENT_TYPE_DISCONNECT:
-                server->n_clients -= 1;
-                peer_id = (int)(server->event->peer - server->host->peers);
-                renet_server_execute_on_disconnection(self, INT2NUM(peer_id));
-        }
+        case ENET_EVENT_TYPE_RECEIVE:
+          peer_id = (int)(server->event->peer - server->host->peers);
+          renet_server_execute_on_packet_receive(self, INT2NUM(peer_id), server->event->packet, server->event->channelID);
+          break;
+       
+        case ENET_EVENT_TYPE_DISCONNECT:
+          server->n_clients -= 1;
+          peer_id = (int)(server->event->peer - server->host->peers);
+          renet_server_execute_on_disconnection(self, INT2NUM(peer_id));
+          break;
+      }
     }
+    while (service(self, server, 0) > 0);
+  }
 
-    int tmp;
-    tmp = NUM2INT(rb_iv_get(self, "@total_sent_data"));
-    tmp = tmp + server->host->totalSentData;
-    server->host->totalSentData = 0;
-    rb_iv_set(self, "@total_sent_data", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_received_data"));
-    tmp = tmp + server->host->totalReceivedData;
-    server->host->totalReceivedData = 0;
-    rb_iv_set(self, "@total_received_data", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_sent_packets"));
-    tmp = tmp + server->host->totalSentPackets;
-    server->host->totalSentPackets = 0;
-    rb_iv_set(self, "@total_sent_packets", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_received_packets"));
-    tmp = tmp + server->host->totalReceivedPackets;
-    server->host->totalReceivedPackets = 0;
-    rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp)); 
-    
-    return Qtrue;
+  int tmp;
+  tmp = NUM2INT(rb_iv_get(self, "@total_sent_data"));
+  tmp = tmp + server->host->totalSentData;
+  server->host->totalSentData = 0;
+  rb_iv_set(self, "@total_sent_data", UINT2NUM(tmp)); 
+  
+  tmp = NUM2INT(rb_iv_get(self, "@total_received_data"));
+  tmp = tmp + server->host->totalReceivedData;
+  server->host->totalReceivedData = 0;
+  rb_iv_set(self, "@total_received_data", UINT2NUM(tmp)); 
+  
+  tmp = NUM2INT(rb_iv_get(self, "@total_sent_packets"));
+  tmp = tmp + server->host->totalSentPackets;
+  server->host->totalSentPackets = 0;
+  rb_iv_set(self, "@total_sent_packets", UINT2NUM(tmp)); 
+  
+  tmp = NUM2INT(rb_iv_get(self, "@total_received_packets"));
+  tmp = tmp + server->host->totalReceivedPackets;
+  server->host->totalReceivedPackets = 0;
+  rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp)); 
+  
+  rb_mutex_unlock(lock);
+  return Qtrue;
 }
 
 VALUE renet_server_use_compression(VALUE self, VALUE flag)
 {
     Server* server;
     Data_Get_Struct(self, Server, server);
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_lock(lock);
     if (flag == Qtrue)
     {
         enet_host_compress_with_range_coder(server->host);
@@ -210,6 +270,7 @@ VALUE renet_server_use_compression(VALUE self, VALUE flag)
     {
         enet_host_compress(server->host, NULL);
     }
+    rb_mutex_unlock(lock);
     return Qnil;
 }
 
@@ -225,7 +286,10 @@ void renet_server_execute_on_connection(VALUE self, VALUE peer_id, VALUE ip)
     VALUE method = rb_iv_get(self, "@on_connection");
     if (method != Qnil)
     {
+        VALUE lock = rb_iv_get(self, "@lock");
+        rb_mutex_unlock(lock);
         rb_funcall(method, rb_intern("call"), 2, peer_id, ip);
+        rb_mutex_lock(lock);
     }
 }
 
@@ -240,7 +304,7 @@ VALUE renet_server_on_packet_receive(VALUE self, VALUE method)
 void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, ENetPacket * const packet, enet_uint8 channelID)
 {
     VALUE method = rb_iv_get(self, "@on_packet_receive");
-    VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
+    VALUE data   = rb_str_new((char const *)packet->data, packet->dataLength);
     /* marshal data and then destroy packet 
        if we don't do this now the packet might become invalid before we get
        back and we'd get a segfault when we attempt to destroy */
@@ -248,7 +312,10 @@ void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, ENetPacke
 
     if (method != Qnil)
     {
+        VALUE lock = rb_iv_get(self, "@lock");
+        rb_mutex_unlock(lock);
         rb_funcall(method, rb_intern("call"), 3, peer_id, data, UINT2NUM(channelID));
+        rb_mutex_lock(lock);
     }
 }
 
@@ -264,7 +331,10 @@ void renet_server_execute_on_disconnection(VALUE self, VALUE peer_id)
     VALUE method = rb_iv_get(self, "@on_disconnection");
     if (method != Qnil)
     {
+        VALUE lock = rb_iv_get(self, "@lock");
+        rb_mutex_unlock(lock);
         rb_funcall(method, rb_intern("call"), 1, peer_id);
+        rb_mutex_lock(lock);
     }
 }
 
