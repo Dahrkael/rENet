@@ -23,20 +23,20 @@ void init_renet_connection()
   VALUE cENetConnection = rb_define_class_under(mENet, "Connection", rb_cObject);
   rb_define_alloc_func(cENetConnection, renet_connection_allocate);
   
-  rb_define_method(cENetConnection, "initialize", renet_connection_initialize, 5);
-  rb_define_method(cENetConnection, "connect", renet_connection_connect, 1);
-  rb_define_method(cENetConnection, "disconnect", renet_connection_disconnect, 1);
-  rb_define_method(cENetConnection, "send_packet", renet_connection_send_packet, 3);
+  rb_define_method(cENetConnection, "initialize",          renet_connection_initialize, 5);
+  rb_define_method(cENetConnection, "connect",             renet_connection_connect, 1);
+  rb_define_method(cENetConnection, "disconnect",          renet_connection_disconnect, 1);
+  rb_define_method(cENetConnection, "send_packet",         renet_connection_send_packet, 3);
   rb_define_method(cENetConnection, "send_queued_packets", renet_connection_send_queued_packets, 0);
-  rb_define_method(cENetConnection, "flush", renet_connection_send_queued_packets, 0);
-  rb_define_method(cENetConnection, "update", renet_connection_update, 1);
-  rb_define_method(cENetConnection, "use_compression", renet_connection_use_compression, 1);
+  rb_define_method(cENetConnection, "flush",               renet_connection_send_queued_packets, 0);
+  rb_define_method(cENetConnection, "update",              renet_connection_update, 1);
+  rb_define_method(cENetConnection, "use_compression",     renet_connection_use_compression, 1);
   
-  rb_define_method(cENetConnection, "on_connection", renet_connection_on_connection, 1);
+  rb_define_method(cENetConnection, "on_connection",     renet_connection_on_connection, 1);
   rb_define_method(cENetConnection, "on_packet_receive", renet_connection_on_packet_receive, 1);
-  rb_define_method(cENetConnection, "on_disconnection", renet_connection_on_disconnection, 1);
+  rb_define_method(cENetConnection, "on_disconnection",  renet_connection_on_disconnection, 1);
   
-  rb_define_method(cENetConnection, "online?", renet_connection_online, 0);
+  rb_define_method(cENetConnection, "online?",    renet_connection_online, 0);
   rb_define_method(cENetConnection, "connected?", renet_connection_online, 0);
 
   rb_define_attr(cENetConnection, "total_sent_data", 1, 1);
@@ -269,6 +269,7 @@ VALUE renet_connection_update(VALUE self, VALUE timeout)
 
   if (connection->online != 0)
   {
+    /* wait up to timeout milliseconds for a packet */
     if (service(self, connection, NUM2UINT(timeout)) > 0)
     {
       do
@@ -288,29 +289,46 @@ VALUE renet_connection_update(VALUE self, VALUE timeout)
           break;
         }
       }
+      /* Do not use a timeout for subsequent services or we could get stuck 
+         here forever */
       while ((connection->online != 0) && (service(self, connection, 0) > 0));
     }
-    
-    int tmp;
-    tmp = NUM2INT(rb_iv_get(self, "@total_sent_data"));
-    tmp = tmp + connection->host->totalSentData;
-    connection->host->totalSentData = 0;
-    rb_iv_set(self, "@total_sent_data", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_received_data"));
-    tmp = tmp + connection->host->totalReceivedData;
-    connection->host->totalReceivedData = 0;
-    rb_iv_set(self, "@total_received_data", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_sent_packets"));
-    tmp = tmp + connection->host->totalSentPackets;
-    connection->host->totalSentPackets = 0;
-    rb_iv_set(self, "@total_sent_packets", UINT2NUM(tmp)); 
-    
-    tmp = NUM2INT(rb_iv_get(self, "@total_received_packets"));
-    tmp = tmp + connection->host->totalReceivedPackets;
-    connection->host->totalReceivedPackets = 0;
-    rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp));
+        
+    {
+      VALUE total = rb_iv_get(self, "@total_sent_data");
+      VALUE result = rb_funcall( total
+                               , rb_intern("+")
+                               , 1
+                               , UINT2NUM(connection->host->totalSentData));
+      rb_iv_set(self, "@total_sent_data", result); 
+    }
+
+    {
+      VALUE total = rb_iv_get(self, "@total_received_data");
+      VALUE result = rb_funcall( total
+                               , rb_intern("+")
+                               , 1
+                               , UINT2NUM(connection->host->totalReceivedData));
+      rb_iv_set(self, "@total_received_data", result);
+    }
+
+    {
+      VALUE total = rb_iv_get(self, "@total_sent_packets");
+      VALUE result = rb_funcall( total
+                               , rb_intern("+")
+                               , 1
+                               , UINT2NUM(connection->host->totalSentPackets));
+      rb_iv_set(self, "@total_sent_packets", result);
+    }
+
+    {
+      VALUE total = rb_iv_get(self, "@total_received_packets");
+      VALUE result = rb_funcall( total
+                               , rb_intern("+")
+                               , 1
+                               , UINT2NUM(connection->host->totalReceivedPackets));
+      rb_iv_set(self, "@total_received_packets", result);
+    }
 
     rv = Qtrue;
   }
