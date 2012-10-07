@@ -26,8 +26,8 @@ typedef struct {
    ENetEvent*   event;
    ENetAddress* address;
    int          channels;
-   int			n_clients;
-   char* 	    conn_ip;
+   int          n_clients;
+   char*        conn_ip;
 } Server;
 
 void init_renet_server();
@@ -44,13 +44,13 @@ VALUE renet_server_update(VALUE self, VALUE timeout);
 VALUE renet_server_use_compression(VALUE self, VALUE flag);
 
 VALUE renet_server_on_connection(VALUE self, VALUE method);
-void renet_server_execute_on_connection(VALUE peer_id, VALUE ip);
+void renet_server_execute_on_connection(VALUE self, VALUE peer_id, VALUE ip);
 
 VALUE renet_server_on_packet_receive(VALUE self, VALUE method);
-void renet_server_execute_on_packet_receive(VALUE peer_id, size_t data_length, enet_uint8* data, enet_uint8 channelID);
+void renet_server_execute_on_packet_receive(VALUE self, VALUE peer_id, ENetPacket * const packet, enet_uint8 channelID);
 
 VALUE renet_server_on_disconnection(VALUE self, VALUE method);
-void renet_server_execute_on_disconnection(VALUE peer_id);
+void renet_server_execute_on_disconnection(VALUE self, VALUE peer_id);
 
 VALUE renet_server_max_clients(VALUE self);
 VALUE renet_server_clients_count(VALUE self);
