@@ -66,6 +66,14 @@ VALUE renet_connection_initialize(VALUE self, VALUE host, VALUE port, VALUE chan
 {
   rb_funcall(mENet, rb_intern("initialize"), 0);
   Connection* connection;
+
+  /* Now that we're releasing the GIL while waiting for enet_host_service 
+     we need a lock to prevent potential segfaults if another thread tries
+     to do an operation on same connection  */
+  VALUE lock = rb_mutex_new();
+  rb_iv_set(self, "@lock", lock); 
+  rb_mutex_lock(lock);
+
   Data_Get_Struct(self, Connection, connection);
   Check_Type(host, T_STRING);
   if (enet_address_set_host(connection->address, StringValuePtr(host)) != 0)
@@ -84,75 +92,136 @@ VALUE renet_connection_initialize(VALUE self, VALUE host, VALUE port, VALUE chan
   rb_iv_set(self, "@total_received_data", INT2FIX(0));
   rb_iv_set(self, "@total_sent_packets", INT2FIX(0));
   rb_iv_set(self, "@total_received_packets", INT2FIX(0));
-  
+
+  rb_mutex_unlock(lock);
   return self;
 }
 
+
+
+/* These let us release the global interpreter lock if while we're waiting for
+   enet_host_service to finish:
+
+   CallbackData
+   do_service
+   service
+*/
+typedef struct
+{
+  Connection * connection;
+  enet_uint32 timeout;
+} CallbackData;
+
+static VALUE do_service(void *data)
+{
+  CallbackData* temp_data = data;
+  return enet_host_service(temp_data->connection->host, temp_data->connection->event, temp_data->timeout);
+}
+
+static VALUE service(VALUE self, Connection* connection, enet_uint32 timeout)
+{
+  CallbackData data = {connection, timeout};
+  if (timeout > 0)
+  {
+    return rb_thread_blocking_region(do_service, &data, RUBY_UBF_IO, 0);
+  }
+  else
+  {
+    return do_service(&data);
+  }
+}
+
+
+/* The core API functions for a connection: 
+  renet_connection_connect
+  renet_connection_disconnect
+  renet_connection_send_packet
+  renet_connection_send_queued_packets
+  renet_connection_update
+  renet_connection_use_compression
+  renet_connection_online
+*/
 VALUE renet_connection_connect(VALUE self, VALUE timeout)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
-  if (connection->online == 1)
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
+  VALUE rv = Qfalse;
+
+  if (connection->online == 0)
   {
-    return Qfalse;
-  }
-  connection->peer = enet_host_connect(connection->host, connection->address, connection->channels, 0);    
+    connection->peer = enet_host_connect(connection->host, connection->address, connection->channels, 0);    
+      
+    if (connection->peer == NULL)
+    {
+      rb_raise(rb_eStandardError, "Cannot connect to remote host");
+    }
     
-  if (connection->peer == NULL)
-  {
-    rb_raise(rb_eStandardError, "Cannot connect to remote host");
+    if (service(self, connection, NUM2UINT(timeout)) > 0 && connection->event->type == ENET_EVENT_TYPE_CONNECT)
+    {
+      connection->online = 1;
+      renet_connection_execute_on_connection(self);
+      rv = Qtrue;
+    }
+    else
+    {
+      enet_peer_reset(connection->peer);
+    }
   }
-  
-  if (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0 && connection->event->type == ENET_EVENT_TYPE_CONNECT)
-  {
-    connection->online = 1;
-    renet_connection_execute_on_connection(self);
-    return Qtrue;
-  }
-  else
-  {
-    enet_peer_reset(connection->peer);
-    return Qfalse;
-  }
-  
+
+  rb_mutex_unlock(lock);
+  return rv;
 }
 
 VALUE renet_connection_disconnect(VALUE self, VALUE timeout)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
+  VALUE rv = Qfalse;
 
   if (connection->online == 0)
   {
-    return Qtrue;
+    rv = Qtrue;
   }
-    
-  connection->online = 0;
-  enet_peer_disconnect(connection->peer, 0);
+  else
+  {      
+    connection->online = 0;
+    enet_peer_disconnect(connection->peer, 0);
 
-  while (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
-  {
-    switch (connection->event->type)
+    while (service(self, connection, NUM2UINT(timeout)) > 0)
     {
-    case ENET_EVENT_TYPE_NONE:
-      break;
-    case ENET_EVENT_TYPE_CONNECT:
-      break;
-    case ENET_EVENT_TYPE_RECEIVE:
-      enet_packet_destroy (connection->event->packet);
-      break;
-    case ENET_EVENT_TYPE_DISCONNECT:
-      return Qtrue;
+      switch (connection->event->type)
+      {
+      case ENET_EVENT_TYPE_NONE:
+        break;
+      case ENET_EVENT_TYPE_CONNECT:
+        break;
+      case ENET_EVENT_TYPE_RECEIVE:
+        enet_packet_destroy (connection->event->packet);
+        break;
+      case ENET_EVENT_TYPE_DISCONNECT:
+        rv = Qtrue;
+        break;
+      }
     }
+    if (rv != Qtrue) { enet_peer_disconnect_now(connection->peer, 0); }
   }
-  enet_peer_disconnect_now(connection->peer, 0);
-  return Qfalse;
+  rb_mutex_unlock(lock);
+  return rv;
 }
 
 VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE channel)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
   Check_Type(data, T_STRING);
   char* cdata = StringValuePtr(data);
   ENetPacket* packet;
@@ -168,6 +237,8 @@ VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE cha
     }
     enet_peer_send(connection->peer, NUM2UINT(channel), packet);
   }
+
+  rb_mutex_unlock(lock);
   return Qnil;
 }
 
@@ -175,10 +246,15 @@ VALUE renet_connection_send_queued_packets(VALUE self)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
   if (connection->online != 0)
   {
     enet_host_flush(connection->host);
   }
+
+  rb_mutex_unlock(lock);
   return Qnil;
 }
 
@@ -186,60 +262,70 @@ VALUE renet_connection_update(VALUE self, VALUE timeout)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
-  if (connection->online == 0)
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
+  VALUE rv = Qfalse;
+
+  if (connection->online != 0)
   {
-    return Qfalse;
-  }
-  if (enet_host_service(connection->host, connection->event, NUM2UINT(timeout)) > 0)
-  {
-    do
+    if (service(self, connection, NUM2UINT(timeout)) > 0)
     {
-      switch (connection->event->type)
+      do
       {
-      case ENET_EVENT_TYPE_NONE:
-        break;
-      case ENET_EVENT_TYPE_CONNECT:
-        break;
-      case ENET_EVENT_TYPE_RECEIVE:     
-        renet_connection_execute_on_packet_receive(self, connection->event->packet, connection->event->channelID);
-        break;
-      case ENET_EVENT_TYPE_DISCONNECT:
-        connection->online = 0;
-        renet_connection_execute_on_disconnection(self);
-        break;
+        switch (connection->event->type)
+        {
+        case ENET_EVENT_TYPE_NONE:
+          break;
+        case ENET_EVENT_TYPE_CONNECT:
+          break;
+        case ENET_EVENT_TYPE_RECEIVE:
+          renet_connection_execute_on_packet_receive(self, connection->event->packet, connection->event->channelID);
+          break;
+        case ENET_EVENT_TYPE_DISCONNECT:
+          connection->online = 0;
+          renet_connection_execute_on_disconnection(self);
+          break;
+        }
       }
+      while ((connection->online != 0) && (service(self, connection, 0) > 0));
     }
-    while ((connection->online != 0) && (enet_host_service(connection->host, connection->event, 0) > 0));
+    
+    int tmp;
+    tmp = NUM2INT(rb_iv_get(self, "@total_sent_data"));
+    tmp = tmp + connection->host->totalSentData;
+    connection->host->totalSentData = 0;
+    rb_iv_set(self, "@total_sent_data", UINT2NUM(tmp)); 
+    
+    tmp = NUM2INT(rb_iv_get(self, "@total_received_data"));
+    tmp = tmp + connection->host->totalReceivedData;
+    connection->host->totalReceivedData = 0;
+    rb_iv_set(self, "@total_received_data", UINT2NUM(tmp)); 
+    
+    tmp = NUM2INT(rb_iv_get(self, "@total_sent_packets"));
+    tmp = tmp + connection->host->totalSentPackets;
+    connection->host->totalSentPackets = 0;
+    rb_iv_set(self, "@total_sent_packets", UINT2NUM(tmp)); 
+    
+    tmp = NUM2INT(rb_iv_get(self, "@total_received_packets"));
+    tmp = tmp + connection->host->totalReceivedPackets;
+    connection->host->totalReceivedPackets = 0;
+    rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp));
+
+    rv = Qtrue;
   }
   
-  int tmp;
-  tmp = NUM2INT(rb_iv_get(self, "@total_sent_data"));
-  tmp = tmp + connection->host->totalSentData;
-  connection->host->totalSentData = 0;
-  rb_iv_set(self, "@total_sent_data", UINT2NUM(tmp)); 
-  
-  tmp = NUM2INT(rb_iv_get(self, "@total_received_data"));
-  tmp = tmp + connection->host->totalReceivedData;
-  connection->host->totalReceivedData = 0;
-  rb_iv_set(self, "@total_received_data", UINT2NUM(tmp)); 
-  
-  tmp = NUM2INT(rb_iv_get(self, "@total_sent_packets"));
-  tmp = tmp + connection->host->totalSentPackets;
-  connection->host->totalSentPackets = 0;
-  rb_iv_set(self, "@total_sent_packets", UINT2NUM(tmp)); 
-  
-  tmp = NUM2INT(rb_iv_get(self, "@total_received_packets"));
-  tmp = tmp + connection->host->totalReceivedPackets;
-  connection->host->totalReceivedPackets = 0;
-  rb_iv_set(self, "@total_received_packets", UINT2NUM(tmp)); 
-  
-  return Qtrue;
+  rb_mutex_unlock(lock);
+  return rv;
 }
 
 VALUE renet_connection_use_compression(VALUE self, VALUE flag)
 {
   Connection* connection;
   Data_Get_Struct(self, Connection, connection);
+  VALUE lock = rb_iv_get(self, "@lock");
+  rb_mutex_lock(lock);
+
   if (flag == Qtrue)
   {
     enet_host_compress_with_range_coder(connection->host);
@@ -248,8 +334,83 @@ VALUE renet_connection_use_compression(VALUE self, VALUE flag)
   {
     enet_host_compress(connection->host, NULL);
   }
+
+  rb_mutex_unlock(lock);
   return Qnil;
 }
+
+VALUE renet_connection_online(VALUE self)
+{
+  Connection* connection;
+  Data_Get_Struct(self, Connection, connection);
+  if (connection->online == 1)
+  {
+    return Qtrue;
+  }
+  else
+  {
+    return Qfalse;
+  }
+}
+
+/* These call our callbacks and take us back into ruby land.
+   They also unlock the mutex for the duration of our stay. we have to be
+   careful to make this safe. For example if we didn't set connection->online
+   = 1 before calling renet_connection_execute_on_connection we could possibly
+   segfault if we called connect from inside on_connection 
+
+  renet_connection_execute_on_connection
+  renet_connection_execute_on_disconnection
+  renet_connection_execute_on_packet_receive
+*/
+
+void renet_connection_execute_on_connection(VALUE self)
+{
+  VALUE method = rb_iv_get(self, "@on_connection");
+  if (method != Qnil)
+  {
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_unlock(lock);
+    rb_funcall(method, rb_intern("call"), 0);
+    rb_mutex_lock(lock);
+  }
+}
+
+void renet_connection_execute_on_disconnection(VALUE self)
+{
+  VALUE method = rb_iv_get(self, "@on_disconnection");
+  if (method != Qnil)
+  {
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_unlock(lock);
+    rb_funcall(method, rb_intern("call"), 0);
+    rb_mutex_lock(lock);
+  }
+}
+
+void renet_connection_execute_on_packet_receive(VALUE self, ENetPacket * const packet, enet_uint8 channelID)
+{
+  VALUE method  = rb_iv_get(self, "@on_packet_receive");
+  VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
+  VALUE channel = UINT2NUM(channelID);
+  /* marshal data and then destroy packet */
+  enet_packet_destroy(packet); 
+
+  if (method != Qnil)
+  {
+    VALUE lock = rb_iv_get(self, "@lock");
+    rb_mutex_unlock(lock);
+    rb_funcall(method, rb_intern("call"), 2, data, channel);
+    rb_mutex_lock(lock);
+  }
+}
+
+
+/* These set the callbacks to call on important events:
+  renet_connection_on_connection
+  renet_connection_on_packet_receive
+  renet_connection_on_disconnection
+*/
 
 VALUE renet_connection_on_connection(VALUE self, VALUE method)
 {
@@ -258,14 +419,6 @@ VALUE renet_connection_on_connection(VALUE self, VALUE method)
   return Qnil;
 }
 
-void renet_connection_execute_on_connection(VALUE self)
-{
-  VALUE method = rb_iv_get(self, "@on_connection");
-  if (method != Qnil)
-  {
-    rb_funcall(method, rb_intern("call"), 0);
-  }
-}
 
 VALUE renet_connection_on_packet_receive(VALUE self, VALUE method)
 {
@@ -292,20 +445,6 @@ VALUE renet_connection_on_packet_receive(VALUE self, VALUE method)
   return Qnil;
 }*/
 
-void renet_connection_execute_on_packet_receive(VALUE self, ENetPacket * const packet, enet_uint8 channelID)
-{
-  VALUE method  = rb_iv_get(self, "@on_packet_receive");
-  VALUE data    = rb_str_new((char const *)packet->data, packet->dataLength);
-  VALUE channel = UINT2NUM(channelID);
-  /* marshal data and then destroy packet */
-  enet_packet_destroy(packet); 
-
-  if (method != Qnil)
-  {
-    rb_funcall(method, rb_intern("call"), 2, data, channel);
-  }
-}
-
 VALUE renet_connection_on_disconnection(VALUE self, VALUE method)
 {
   /*VALUE method = rb_funcall(rb_cObject, rb_intern("method"), 1, symbol);*/
@@ -313,25 +452,6 @@ VALUE renet_connection_on_disconnection(VALUE self, VALUE method)
   return Qnil;
 }
 
-void renet_connection_execute_on_disconnection(VALUE self)
-{
-  VALUE method = rb_iv_get(self, "@on_disconnection");
-  if (method != Qnil)
-  {
-    rb_funcall(method, rb_intern("call"), 0);
-  }
-}
 
-VALUE renet_connection_online(VALUE self)
-{
-  Connection* connection;
-  Data_Get_Struct(self, Connection, connection);
-  if (connection->online == 1)
-  {
-    return Qtrue;
-  }
-  else
-  {
-    return Qfalse;
-  }
-}
+
+
