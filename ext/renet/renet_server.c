@@ -231,6 +231,11 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
     while (service(self, server, 0) > 0);
   }
 
+  /* we are unlocking now because it's important to unlock before going 
+    back into ruby land (which rb_funcall will do). If we don't then an
+    exception can leave the locks in an inconsistent state */
+  rb_mutex_unlock(lock);
+
   {
     VALUE total = rb_iv_get(self, "@total_sent_data");
     VALUE result = rb_funcall( total
@@ -238,6 +243,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
                              , 1
                              , UINT2NUM(server->host->totalSentData));
     rb_iv_set(self, "@total_sent_data", result); 
+    server->host->totalSentData = 0;
   }
 
   {
@@ -247,6 +253,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
                              , 1
                              , UINT2NUM(server->host->totalReceivedData));
     rb_iv_set(self, "@total_received_data", result);
+    server->host->totalReceivedData = 0;
   }
 
   {
@@ -256,6 +263,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
                              , 1
                              , UINT2NUM(server->host->totalSentPackets));
     rb_iv_set(self, "@total_sent_packets", result);
+    server->host->totalSentPackets = 0;
   }
 
   {
@@ -265,9 +273,9 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
                              , 1
                              , UINT2NUM(server->host->totalReceivedPackets));
     rb_iv_set(self, "@total_received_packets", result);
+    server->host->totalReceivedPackets = 0;
   }
   
-  rb_mutex_unlock(lock);
   return Qtrue;
 }
 
