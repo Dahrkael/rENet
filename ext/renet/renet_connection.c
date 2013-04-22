@@ -208,6 +208,10 @@ VALUE renet_connection_disconnect(VALUE self, VALUE timeout)
         rv = Qtrue;
         break;
       }
+      if (rv == Qtrue)
+      {
+        break;
+      }
     }
     if (rv != Qtrue) { enet_peer_disconnect_now(connection->peer, 0); }
   }
