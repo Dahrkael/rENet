@@ -99,8 +99,8 @@ VALUE renet_server_disconnect_client(VALUE self, VALUE peer_id)
     VALUE lock = rb_iv_get(self, "@lock");
     rb_mutex_lock(lock);
     enet_peer_disconnect_now(&(server->host->peers[NUM2UINT(peer_id)]), 0);
-    rb_mutex_unlock(lock);
     renet_server_execute_on_disconnection(self, peer_id);
+    rb_mutex_unlock(lock);
     return Qtrue;
 }
 
@@ -224,6 +224,7 @@ VALUE renet_server_update(VALUE self, VALUE timeout)
         case ENET_EVENT_TYPE_DISCONNECT:
           server->n_clients -= 1;
           peer_id = (int)(server->event->peer - server->host->peers);
+          server->event->peer->data = NULL;
           renet_server_execute_on_disconnection(self, INT2NUM(peer_id));
           break;
       }
