@@ -11,19 +11,14 @@ Gem::Specification.new do |s|
   s.description = s.summary
   s.require_path = "lib"
   s.has_rdoc = false
-  s.files = Dir["README", "lib/**/*.rb", "examples/*.rb", "test/*.rb"]
+  s.files = Dir["README", "lib/**/*.rb", "examples/*.rb", "test/*.rb",
+                "ext/**/*.h", "ext/**/*.c", "ext/#{project_name}/extconf.rb"]
+  s.extensions = ["ext/#{project_name}/extconf.rb"]
 
   case RUBY_PLATFORM
-    when /(mingw|mswin|windows)/i
-      s.platform = 'i386-mingw32'
-      s.files += Dir["lib/**/*.so"]
     when /darwin/i
       s.platform = 'universal-darwin'
-      s.files += Dir["ext/**/*.h", "ext/**/*.c", "ext/#{project_name}/extconf.rb"]
-      s.extensions = ["ext/#{project_name}/extconf.rb"]
     else # linux and many others
       s.platform = 'ruby'
-      s.files += Dir["ext/**/*.h", "ext/**/*.c", "ext/#{project_name}/extconf.rb"]
-      s.extensions = ["ext/#{project_name}/extconf.rb"]
   end
 end
