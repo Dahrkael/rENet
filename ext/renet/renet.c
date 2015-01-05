@@ -44,6 +44,7 @@ VALUE renet_main_initialize(VALUE self)
 		rb_cv_set(mENet, "@@initialized", Qtrue); 
 		return Qtrue;
 	}
+  return Qtrue;
 }
 
 VALUE renet_main_deinitialize(VALUE self)
