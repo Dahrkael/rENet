@@ -14,11 +14,5 @@ Gem::Specification.new do |s|
   s.files = Dir["README", "lib/**/*.rb", "examples/*.rb", "test/*.rb",
                 "ext/**/*.h", "ext/**/*.c", "ext/#{project_name}/extconf.rb"]
   s.extensions = ["ext/#{project_name}/extconf.rb"]
-
-  case RUBY_PLATFORM
-    when /darwin/i
-      s.platform = 'universal-darwin'
-    else # linux and many others
-      s.platform = 'ruby'
-  end
+  s.platform = 'ruby'
 end
