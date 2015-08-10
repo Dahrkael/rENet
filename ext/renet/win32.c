@@ -30,31 +30,44 @@ enet_initialize (void)
     WORD versionRequested = MAKEWORD (1, 1);
     WSADATA wsaData;
 
-    // This is a super ugly fix to work around the way ruby builds extensions.
-    // Ruby tries to make its own posix like wrappers for windows socket functions
-    // like socket() that return _not_ windows socket handles, but special
-    // "file handles" that are managed by internally by ruby.
-    // These special ruby handles will blow up if you pass them directly to
-    // WSARecvFrom, and if you unwrap them and get the actual windows
-    // socket handle underneath, they still give weird behavior for select()
+
+
+    // Internally ruby wraps the windows socket functions with it's own
+    //  functions. These wrappers replace the socket handles that you'd
+    //  normally work with, with a home made "file descriptor", which is
+    //  managed internally by ruby. I'm assuming this is done to make
+    //  the internal APIs more consistent across OSs. For an example of
+    //  what I'm talking about, search for: "rb_w32_socket(" in
+    //  http://svn.ruby-lang.org/repos/ruby/branches/ruby_1_9_3/win32/win32.c
     //
-    // Since none of these handles need to be known about in other ruby code
-    // there is no need to try to play nice with the weird ruby socket/filehandles
-    // so I can safely just bypass the whole mess with this mess:
+    // Unfortunately, not only does ruby wrap the socket functions, it also
+    //  replaces the symbols for the wrapped functions at the linker level so
+    //  it is nearly impossible to actually use the native windows socket 
+    //  functions
+    //  We basically have two options:
+    //   1. adapt enet to use the wrapped ruby socket functions
+    //   2. use an ugly hack to go around ruby and use the native functions
     //
-    // Get the actual windows socket syscalls, instead of the wrapped ruby versions:
-    bind_ptr = (LPFN_BIND)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "bind");
+    //  I option 1 first, but ran into a couple weird bugs and
+    //   decided this approach wasn't worth the trouble. None of these sockets
+    //   will be touched outside of enet, so we don't need to make sure they'll
+    //   interop nicely with other ruby code.
+    //
+    //  Option 2 is super ugly, but I think will result in fewer surprises.
+
+    // Get the actual windows socket syscalls, instead of the wrapped ones provided by ruby:
+    bind_ptr        = (LPFN_BIND)       GetProcAddress(GetModuleHandleA("ws2_32.dll"), "bind");
     getsockname_ptr = (LPFN_GETSOCKNAME)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "getsockname");
-    listen_ptr = (LPFN_LISTEN)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "listen");
-    socket_ptr = (LPFN_SOCKET)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "socket");
+    listen_ptr      = (LPFN_LISTEN)     GetProcAddress(GetModuleHandleA("ws2_32.dll"), "listen");
+    socket_ptr      = (LPFN_SOCKET)     GetProcAddress(GetModuleHandleA("ws2_32.dll"), "socket");
     ioctlsocket_ptr = (LPFN_IOCTLSOCKET)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "ioctlsocket");
-    setsockopt_ptr = (LPFN_SETSOCKOPT)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "setsockopt");
-    getsockopt_ptr = (LPFN_GETSOCKOPT)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "getsockopt");
-    connect_ptr = (LPFN_CONNECT)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "connect");
-    accept_ptr = (LPFN_ACCEPT)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "accept");
-    shutdown_ptr = (LPFN_SHUTDOWN)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "shutdown");
+    setsockopt_ptr  = (LPFN_SETSOCKOPT) GetProcAddress(GetModuleHandleA("ws2_32.dll"), "setsockopt");
+    getsockopt_ptr  = (LPFN_GETSOCKOPT) GetProcAddress(GetModuleHandleA("ws2_32.dll"), "getsockopt");
+    connect_ptr     = (LPFN_CONNECT)    GetProcAddress(GetModuleHandleA("ws2_32.dll"), "connect");
+    accept_ptr      = (LPFN_ACCEPT)     GetProcAddress(GetModuleHandleA("ws2_32.dll"), "accept");
+    shutdown_ptr    = (LPFN_SHUTDOWN)   GetProcAddress(GetModuleHandleA("ws2_32.dll"), "shutdown");
     closesocket_ptr = (LPFN_CLOSESOCKET)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "closesocket");
-    select_ptr = (LPFN_SELECT)GetProcAddress(GetModuleHandleA("ws2_32.dll"), "select");
+    select_ptr      = (LPFN_SELECT)     GetProcAddress(GetModuleHandleA("ws2_32.dll"), "select");
 
     // WSAStartup() can be called more than once in a given app, but
     //  must be paired with a WSACleanup()
