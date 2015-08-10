@@ -1,5 +1,5 @@
 require 'mkmf'
-$CFLAGS += ' -std=c99 '
+# $CFLAGS += ' -Wall -Werror -Wno-declaration-after-statement'
 case RUBY_PLATFORM
   when /(mingw|mswin|windows)/i
     $LDFLAGS += ' -lwinmm '
