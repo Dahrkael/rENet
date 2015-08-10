@@ -1,4 +1,4 @@
-/** 
+/**
  @file  win32.c
  @brief ENet Win32 system specific functions
 */
@@ -10,13 +10,54 @@
 #include <mmsystem.h>
 
 static enet_uint32 timeBase = 0;
+static LPFN_BIND bind_ptr;
+static LPFN_GETSOCKNAME getsockname_ptr;
+static LPFN_LISTEN listen_ptr;
+static LPFN_SOCKET socket_ptr;
+static LPFN_IOCTLSOCKET ioctlsocket_ptr;
+static LPFN_SETSOCKOPT setsockopt_ptr;
+static LPFN_GETSOCKOPT getsockopt_ptr;
+static LPFN_CONNECT connect_ptr;
+static LPFN_ACCEPT accept_ptr;
+static LPFN_SHUTDOWN shutdown_ptr;
+static LPFN_CLOSESOCKET closesocket_ptr;
+static LPFN_SELECT select_ptr;
+
 
 int
 enet_initialize (void)
 {
     WORD versionRequested = MAKEWORD (1, 1);
     WSADATA wsaData;
-   
+
+    // This is a super ugly fix to work around the way ruby builds extensions.
+    // Ruby tries to make its own posix like wrappers for windows socket functions
+    // like socket() that return _not_ windows socket handles, but special
+    // "file handles" that are managed by internally by ruby.
+    // These special ruby handles will blow up if you pass them directly to
+    // WSARecvFrom, and if you unwrap them and get the actual windows
+    // socket handle underneath, they still give weird behavior for select()
+    //
+    // Since none of these handles need to be known about in other ruby code
+    // there is no need to try to play nice with the weird ruby socket/filehandles
+    // so I can safely just bypass the whole mess with this mess:
+    //
+    // Get the actual windows socket syscalls, instead of the wrapped ruby versions:
+    bind_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "bind");
+    getsockname_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "getsockname");
+    listen_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "listen");
+    socket_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "socket");
+    ioctlsocket_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "ioctlsocket");
+    setsockopt_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "setsockopt");
+    getsockopt_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "getsockopt");
+    connect_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "connect");
+    accept_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "accept");
+    shutdown_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "shutdown");
+    closesocket_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "closesocket");
+    select_ptr = GetProcAddress(GetModuleHandleA("ws2_32.dll"), "select");
+
+    // WSAStartup() can be called more than once in a given app, but
+    //  must be paired with a WSACleanup()
     if (WSAStartup (versionRequested, & wsaData))
        return -1;
 
@@ -24,7 +65,7 @@ enet_initialize (void)
         HIBYTE (wsaData.wVersion) != 1)
     {
        WSACleanup ();
-       
+
        return -1;
     }
 
@@ -38,6 +79,8 @@ enet_deinitialize (void)
 {
     timeEndPeriod (1);
 
+    // There must be a WSACleanup() for  every WSAStartup()
+    // https://msdn.microsoft.com/en-us/library/windows/desktop/ms741549(v=vs.85).aspx
     WSACleanup ();
 }
 
@@ -101,9 +144,9 @@ enet_address_get_host (const ENetAddress * address, char * name, size_t nameLeng
 {
     struct in_addr in;
     struct hostent * hostEntry;
- 
+
     in.s_addr = address -> host;
-    
+
     hostEntry = gethostbyaddr ((char *) & in, sizeof (struct in_addr), AF_INET);
     if (hostEntry == NULL)
       return enet_address_get_host_ip (address, name, nameLength);
@@ -138,7 +181,7 @@ enet_socket_bind (ENetSocket socket, const ENetAddress * address)
        sin.sin_addr.s_addr = INADDR_ANY;
     }
 
-    return bind (socket,
+    return (*bind_ptr) (socket,
                  (struct sockaddr *) & sin,
                  sizeof (struct sockaddr_in)) == SOCKET_ERROR ? -1 : 0;
 }
@@ -149,7 +192,7 @@ enet_socket_get_address (ENetSocket socket, ENetAddress * address)
     struct sockaddr_in sin;
     int sinLength = sizeof (struct sockaddr_in);
 
-    if (getsockname (socket, (struct sockaddr *) & sin, & sinLength) == -1)
+    if ((*getsockname_ptr) (socket, (struct sockaddr *) & sin, & sinLength) == -1)
       return -1;
 
     address -> host = (enet_uint32) sin.sin_addr.s_addr;
@@ -161,13 +204,13 @@ enet_socket_get_address (ENetSocket socket, ENetAddress * address)
 int
 enet_socket_listen (ENetSocket socket, int backlog)
 {
-    return listen (socket, backlog < 0 ? SOMAXCONN : backlog) == SOCKET_ERROR ? -1 : 0;
+    return (*listen_ptr) (socket, backlog < 0 ? SOMAXCONN : backlog) == SOCKET_ERROR ? -1 : 0;
 }
 
 ENetSocket
 enet_socket_create (ENetSocketType type)
 {
-    return socket (PF_INET, type == ENET_SOCKET_TYPE_DATAGRAM ? SOCK_DGRAM : SOCK_STREAM, 0);
+    return (*socket_ptr) (PF_INET, type == ENET_SOCKET_TYPE_DATAGRAM ? SOCK_DGRAM : SOCK_STREAM, IPPROTO_UDP);
 }
 
 int
@@ -179,36 +222,36 @@ enet_socket_set_option (ENetSocket socket, ENetSocketOption option, int value)
         case ENET_SOCKOPT_NONBLOCK:
         {
             u_long nonBlocking = (u_long) value;
-            result = ioctlsocket (socket, FIONBIO, & nonBlocking);
+            result = (*ioctlsocket_ptr) (socket, FIONBIO, & nonBlocking);
             break;
         }
 
         case ENET_SOCKOPT_BROADCAST:
-            result = setsockopt (socket, SOL_SOCKET, SO_BROADCAST, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_BROADCAST, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_REUSEADDR:
-            result = setsockopt (socket, SOL_SOCKET, SO_REUSEADDR, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_REUSEADDR, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_RCVBUF:
-            result = setsockopt (socket, SOL_SOCKET, SO_RCVBUF, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_RCVBUF, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_SNDBUF:
-            result = setsockopt (socket, SOL_SOCKET, SO_SNDBUF, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_SNDBUF, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_RCVTIMEO:
-            result = setsockopt (socket, SOL_SOCKET, SO_RCVTIMEO, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_RCVTIMEO, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_SNDTIMEO:
-            result = setsockopt (socket, SOL_SOCKET, SO_SNDTIMEO, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, SOL_SOCKET, SO_SNDTIMEO, (char *) & value, sizeof (int));
             break;
 
         case ENET_SOCKOPT_NODELAY:
-            result = setsockopt (socket, IPPROTO_TCP, TCP_NODELAY, (char *) & value, sizeof (int));
+            result = (*setsockopt_ptr) (socket, IPPROTO_TCP, TCP_NODELAY, (char *) & value, sizeof (int));
             break;
 
         default:
@@ -225,7 +268,7 @@ enet_socket_get_option (ENetSocket socket, ENetSocketOption option, int * value)
     {
         case ENET_SOCKOPT_ERROR:
             len = sizeof(int);
-            result = getsockopt (socket, SOL_SOCKET, SO_ERROR, (char *) value, & len);
+            result = (*getsockopt_ptr) (socket, SOL_SOCKET, SO_ERROR, (char *) value, & len);
             break;
 
         default:
@@ -246,7 +289,7 @@ enet_socket_connect (ENetSocket socket, const ENetAddress * address)
     sin.sin_port = ENET_HOST_TO_NET_16 (address -> port);
     sin.sin_addr.s_addr = address -> host;
 
-    result = connect (socket, (struct sockaddr *) & sin, sizeof (struct sockaddr_in));
+    result = (*connect_ptr) (socket, (struct sockaddr *) & sin, sizeof (struct sockaddr_in));
     if (result == SOCKET_ERROR && WSAGetLastError () != WSAEWOULDBLOCK)
       return -1;
 
@@ -260,8 +303,8 @@ enet_socket_accept (ENetSocket socket, ENetAddress * address)
     struct sockaddr_in sin;
     int sinLength = sizeof (struct sockaddr_in);
 
-    result = accept (socket, 
-                     address != NULL ? (struct sockaddr *) & sin : NULL, 
+    result = (*accept_ptr) (socket,
+                     address != NULL ? (struct sockaddr *) & sin : NULL,
                      address != NULL ? & sinLength : NULL);
 
     if (result == INVALID_SOCKET)
@@ -279,14 +322,14 @@ enet_socket_accept (ENetSocket socket, ENetAddress * address)
 int
 enet_socket_shutdown (ENetSocket socket, ENetSocketShutdown how)
 {
-    return shutdown (socket, (int) how) == SOCKET_ERROR ? -1 : 0;
+    return (*shutdown_ptr) (socket, (int) how) == SOCKET_ERROR ? -1 : 0;
 }
 
 void
 enet_socket_destroy (ENetSocket socket)
 {
     if (socket != INVALID_SOCKET)
-      closesocket (socket);
+      (*closesocket_ptr) (socket);
 }
 
 int
@@ -307,7 +350,7 @@ enet_socket_send (ENetSocket socket,
         sin.sin_addr.s_addr = address -> host;
     }
 
-    if (WSASendTo (socket, 
+    if (WSASendTo (socket,
                    (LPWSABUF) buffers,
                    (DWORD) bufferCount,
                    & sentLength,
@@ -377,7 +420,7 @@ enet_socketset_select (ENetSocket maxSocket, ENetSocketSet * readSet, ENetSocket
     timeVal.tv_sec = timeout / 1000;
     timeVal.tv_usec = (timeout % 1000) * 1000;
 
-    return select (maxSocket + 1, readSet, writeSet, NULL, & timeVal);
+    return (*select_ptr) (maxSocket + 1, readSet, writeSet, NULL, & timeVal);
 }
 
 int
@@ -386,10 +429,10 @@ enet_socket_wait (ENetSocket socket, enet_uint32 * condition, enet_uint32 timeou
     fd_set readSet, writeSet;
     struct timeval timeVal;
     int selectCount;
-    
+
     timeVal.tv_sec = timeout / 1000;
     timeVal.tv_usec = (timeout % 1000) * 1000;
-    
+
     FD_ZERO (& readSet);
     FD_ZERO (& writeSet);
 
@@ -399,7 +442,7 @@ enet_socket_wait (ENetSocket socket, enet_uint32 * condition, enet_uint32 timeou
     if (* condition & ENET_SOCKET_WAIT_RECEIVE)
       FD_SET (socket, & readSet);
 
-    selectCount = select (socket + 1, & readSet, & writeSet, NULL, & timeVal);
+    selectCount = (*select_ptr) (socket + 1, & readSet, & writeSet, NULL, & timeVal);
 
     if (selectCount < 0)
       return -1;
@@ -411,12 +454,12 @@ enet_socket_wait (ENetSocket socket, enet_uint32 * condition, enet_uint32 timeou
 
     if (FD_ISSET (socket, & writeSet))
       * condition |= ENET_SOCKET_WAIT_SEND;
-    
+
     if (FD_ISSET (socket, & readSet))
       * condition |= ENET_SOCKET_WAIT_RECEIVE;
 
     return 0;
-} 
+}
 
 #endif
 
