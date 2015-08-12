@@ -1,10 +1,10 @@
 =================================================
  rENet
- Ruby library for games networking
--------------------------------------------------
-	     -= Work in Progress =-
-	     No docs or comments right now :|
-	     Just this readme ;x
+ Ruby library for games networking by Dahrkael and Job Vranish
+=================================================
+ Under MIT license
+------------------------------------------------
+ Uses ENet as backend < http://enet.bespin.org/ >
 =================================================
 
  Planned:
@@ -12,19 +12,9 @@
  - ENet::Server     (server)
  - Others
  
- More or less finished:
+ Finished:
  - ENet::Connection
  - ENet::Server
- 
--------------------------------------------------
- Available binaries:
- - Ruby 1.9 Windows 32bits (Mingw)
- 
-=================================================
- Under MIT license
-------------------------------------------------
- Uses ENet as backend < http://enet.bespin.org/ >
-=================================================
 
 Library overview
 -------------------------------------------------
