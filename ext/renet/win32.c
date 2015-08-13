@@ -5,6 +5,7 @@
 #ifdef _WIN32
 
 #define ENET_BUILDING_LIB 1
+#define INCL_WINSOCK_API_TYPEDEFS 1
 #include "enet/enet.h"
 #include <windows.h>
 #include <mmsystem.h>
