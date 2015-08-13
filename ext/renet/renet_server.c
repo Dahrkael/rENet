@@ -17,7 +17,7 @@
 */
 
 #include "renet_server.h"
-#include "ruby/thread.h"
+#include <ruby.h>
 
 void init_renet_server()
 {
