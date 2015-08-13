@@ -17,7 +17,7 @@
 */
 
 #include "renet_server.h"
-
+#include "ruby/thread.h"
 
 void init_renet_server()
 {
@@ -170,31 +170,26 @@ typedef struct
 {
   Server * server;
   enet_uint32 timeout;
+  int result;
 } CallbackData;
 
-static VALUE do_service(void *data)
+static void* do_service(void *data)
 {
   CallbackData* temp_data = data;
-  int result = enet_host_service(temp_data->server->host, temp_data->server->event, temp_data->timeout);
-  // this will do weird things with the negative numbers but we'll undo it on the other side
-  return (unsigned int)result;
+  temp_data->result = enet_host_service(temp_data->server->host, temp_data->server->event, temp_data->timeout);
+  return NULL;
 }
 
 static int service(VALUE self, Server* server, enet_uint32 timeout)
 {
-  CallbackData data = {server, timeout};
-  VALUE result;
+  CallbackData data = {server, timeout, -1};
+
   if (timeout > 0)
-  {
-    result = rb_thread_blocking_region(do_service, &data, RUBY_UBF_IO, 0);
-  }
+  { rb_thread_call_without_gvl(do_service, &data, RUBY_UBF_IO, NULL); }
   else
-  {
-    result = do_service(&data);
-  }
-  // undo our cast to VALUE in a way that will properly restore negative numbers
-  unsigned int fix_negatives = (unsigned int)result;
-  return (int)fix_negatives;
+  { do_service(&data); }
+
+  return data.result;
 }
 
 VALUE renet_server_update(VALUE self, VALUE timeout)
