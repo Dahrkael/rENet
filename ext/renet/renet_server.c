@@ -115,11 +115,11 @@ VALUE renet_server_send_packet(VALUE self, VALUE peer_id, VALUE data, VALUE flag
     ENetPacket* packet;
     if (flag == Qtrue)
     {
-        packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, ENET_PACKET_FLAG_RELIABLE);
+        packet = enet_packet_create(cdata, RSTRING_LEN(data), ENET_PACKET_FLAG_RELIABLE);
     }
     else
     {
-        packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
+        packet = enet_packet_create(cdata, RSTRING_LEN(data), 0);
     }
     enet_peer_send(&(server->host->peers[NUM2UINT(peer_id)]), NUM2UINT(channel), packet);
     rb_mutex_unlock(lock);
@@ -137,11 +137,11 @@ VALUE renet_server_broadcast_packet(VALUE self, VALUE data, VALUE flag, VALUE ch
     ENetPacket* packet;
     if (flag == Qtrue)
     {
-        packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, ENET_PACKET_FLAG_RELIABLE);
+        packet = enet_packet_create(cdata, RSTRING_LEN(data), ENET_PACKET_FLAG_RELIABLE);
     }
     else
     {
-        packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
+        packet = enet_packet_create(cdata, RSTRING_LEN(data), 0);
     }
     enet_host_broadcast(server->host, NUM2UINT(channel), packet);
     rb_mutex_unlock(lock);

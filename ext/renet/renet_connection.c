@@ -234,11 +234,11 @@ VALUE renet_connection_send_packet(VALUE self, VALUE data, VALUE flag, VALUE cha
   {
     if (flag == Qtrue)
     {
-      packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, ENET_PACKET_FLAG_RELIABLE);
+      packet = enet_packet_create(cdata, RSTRING_LEN(data), ENET_PACKET_FLAG_RELIABLE);
     }
     else
     {
-      packet = enet_packet_create(cdata, RSTRING_LEN(data) + 1, 0);
+      packet = enet_packet_create(cdata, RSTRING_LEN(data), 0);
     }
     enet_peer_send(connection->peer, NUM2UINT(channel), packet);
   }
